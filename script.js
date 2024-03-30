@@ -55,6 +55,8 @@ const toggle_event_settings = document.getElementById("toggle-event-settings");
 const events_settings = document.getElementById("events-settings");
 const toggle_subs = document.getElementById("toggle-subs");
 const input_sub_factor = document.getElementById("sub-factor");
+const input_sub_factor_t2 = document.getElementById("sub-factor-t2");
+const input_sub_factor_t3 = document.getElementById("sub-factor-t3");
 const toggle_bits = document.getElementById("toggle-bits");
 const input_bits_factor = document.getElementById("bits-factor");
 const toggle_tips = document.getElementById("toggle-tips");
@@ -87,6 +89,19 @@ const blueValue = document.getElementById("blue-value");
 
 const CSS_Variables = document.querySelector(":root");
 
+/* For Throne */
+let intervalIdx;
+const clearIt = () => {
+  if (intervalIdx !== undefined) clearInterval(intervalIdx);
+  intervalIdx = undefined;
+};
+const setIt = () => {
+  refresher();
+  if (intervalIdx !== undefined) clearInterval(intervalIdx);
+  intervalIdx = setInterval(() => refresher(), 900000); // 15 minutes
+};
+const startingTime = 1680998400000;
+
 /* SETTINGS */
 let settings = {
   totalAmount: 100,
@@ -99,6 +114,8 @@ let settings = {
   state_toggle_event_settings: false,
   state_toggle_subs: true,
   sub_factor: 5,
+  sub_factor_t2: 10,
+  sub_factor_t3: 15,
   state_toggle_bits: true,
   bits_factor: 250,
   state_toggle_tips: true,
@@ -115,7 +132,6 @@ let settings = {
   state_toggle_animation: true,
   nbGoals: 7,
 };
-applySettings(settings);
 
 const emptyGoal = {
   amount: 0,
@@ -130,19 +146,8 @@ let colors = {
   accent_color: "rgb(0, 0, 128)",
   tertiary_color: "rgb(0, 0, 255)",
 };
-
-/* For Throne */
-let intervalIdx;
-const clearIt = () => {
-  if (intervalIdx !== undefined) clearInterval(intervalIdx);
-  intervalIdx = undefined;
-};
-const setIt = () => {
-  refresher();
-  if (intervalIdx !== undefined) clearInterval(intervalIdx);
-  intervalIdx = setInterval(() => refresher(), 900000); // 15 minutes
-};
-const startingTime = 1680998400000;
+// BUG
+currencySymbol = "$";
 
 // Initial setup on widget startup
 window.addEventListener("onWidgetLoad", function (obj) {
@@ -193,27 +198,28 @@ window.addEventListener("onEventReceived", function (obj) {
     if (obj.detail.listener === "tip-latest" && settings.state_toggle_tips) {
       DonationCounter(obj.detail.event.amount * settings.tips_factor);
     }
-    if (obj.detail.listener === "subscriber-latest" && settings.state_toggle_subs) {
+    if (
+      obj.detail.listener.split("-")[0] === "subscriber" &&
+      settings.state_toggle_subs
+    ) {
       let event = obj.detail.event;
+      console.log(event);
       //temp amount counters
       let _amount = event.amount;
-      let gift = event.gifted;
-      let bulk = event.bulkGifted;
 
-      if (event.isCommunityGift) {
-        return;
-      }
-      if (bulk) {
-        _amount = _amount;
-      } else if (gift) {
-        _amount = 1;
-      } else if (_amount > 1) {
-        _amount = _amount;
-      } else {
+      if (event.bulkGifted) { return; } 
+      else {
         _amount = 1;
       }
-      //math on the sub amount
-      DonationCounter(_amount * settings.sub_factor);
+      if (event.tier === "2000") {
+        DonationCounter(_amount * settings.sub_factor_t2);
+      }
+      else if (event.tier === "3000") {
+        DonationCounter(_amount * settings.sub_factor_t3);
+      }
+      else {
+        DonationCounter(_amount * settings.sub_factor);
+      }
     }
     adjustColor();
     SE_API.store.set("exportSettings_DonationCounter", settings);
@@ -438,6 +444,12 @@ window.addEventListener("DOMContentLoaded", function () {
   });
   input_sub_factor.addEventListener("input", function () {
     settings.sub_factor = parseFloat(input_sub_factor.value);
+  });
+  input_sub_factor_t2.addEventListener("input", function () {
+    settings.sub_factor_t2 = parseFloat(input_sub_factor_t2.value);
+  });
+  input_sub_factor_t3.addEventListener("input", function () {
+    settings.sub_factor_t3 = parseFloat(input_sub_factor_t3.value);
   });
   toggle_bits.addEventListener("click", function () {
     settings.state_toggle_bits = toggleSwitch(
@@ -700,14 +712,17 @@ function DonationCounter(amount) {
         elementDiv.innerHTML = `
       <div class="check">${HTML_CHECK}</div>
       <div class="goalMsg">
-      ${
-        goal.description +
-        " - " +
-        currencySymbol +
-        " " +
-        String(goal.amount) +
-        ""
-      }
+        <div class="goalMsgTxt">
+          ${goal.description}
+        </div>
+        <div class="goalMsgAmount">
+          <div class="goalMsgAmountSymbol">
+            ${currencySymbol + " "}
+          </div>
+          <div class="goalMsgAmountNumber">
+            ${String(goal.amount)}
+          </div>
+        </div>
       </div>
       `;
         goal_list.appendChild(elementDiv);
@@ -727,10 +742,9 @@ function checkingBoxes() {
       }
     } else {
       settings.goals[key].reached = false;
-      settings.goals[key].description = settings.goals[key].description.replace(
-        /<s>|<\/s>/g,
-        ""
-      );
+      settings.goals[key].description = settings.goals[key].description
+        .replace(" - Reached", "")
+        .replace(/<s>|<\/s>/g, "");
     }
   }
 }
@@ -764,6 +778,8 @@ function applySettings(obj) {
     : "none";
   toggle_subs.classList.toggle("active", obj.state_toggle_subs);
   input_sub_factor.value = obj.sub_factor;
+  input_sub_factor_t2.value = obj.sub_factor_t2;
+  input_sub_factor_t3.value = obj.sub_factor_t3;
   toggle_bits.classList.toggle("active", obj.state_toggle_bits);
   input_bits_factor.value = obj.bits_factor;
   toggle_tips.classList.toggle("active", obj.state_toggle_tips);
@@ -771,6 +787,11 @@ function applySettings(obj) {
   toggle_throne.classList.toggle("active", obj.state_toggle_throne);
   input_throne_username.value = obj.throne_username;
   input_throne_factor.value = obj.throne_factor;
+  if (obj.state_toggle_throne) {
+    setIt();
+  } else {
+    clearIt();
+  }
   toggle_customization.classList.toggle(
     "active",
     obj.state_toggle_customization
@@ -823,48 +844,18 @@ function adjustColor() {
     txtluminance = 10;
   }
   colors.txt_color =
-    "hsla(" +
-    theme_Color.h +
-    ", " +
-    theme_Color.s +
-    "%, " +
-    txtluminance +
-    "%, 1)";
+    "hsla("+theme_Color.h+", "+theme_Color.s+"%, "+txtluminance+"%, 1)";
   colors.bg_color =
-    "hsla(" +
-    theme_Color.h +
-    ", " +
-    theme_Color.s +
-    "%, " +
-    (theme_Color.l + 10) +
-    "%, 0.25)";
+    "hsla("+theme_Color.h+", "+theme_Color.s+"%, "+(theme_Color.l+15)+"%, 1)";//, 0.25)";
   colors.primary_color =
-    "hsla(" +
-    theme_Color.h +
-    ", " +
-    theme_Color.s +
-    "%, " +
-    (theme_Color.l - 10) +
-    "%, 0.7)";
+    "hsla("+theme_Color.h+", "+theme_Color.s+"%, "+(theme_Color.l-10)+"%, 1)";//, 0.7)";
   colors.secondary_color =
-    "hsla(" +
-    theme_Color.h +
-    ", " +
-    theme_Color.s +
-    "%, " +
-    theme_Color.l +
-    "%, 1)";
+    "hsla("+theme_Color.h+", "+theme_Color.s+"%, "+theme_Color.l+"%, 1)";
   colors.accent_color =
-    "hsla(" + theme_Color.h + ", " + theme_Color.s + "%, 50%, 1)";
+    "hsla("+theme_Color.h+", "+theme_Color.s+"%, 50%, 1)";
 
   colors.tertiary_color =
-    "hsla(" +
-    theme_Color.h +
-    ", " +
-    theme_Color.s +
-    "%," +
-    (theme_Color.l - 15) +
-    "%, 1)";
+    "hsla("+theme_Color.h+", "+theme_Color.s+"%, "+(theme_Color.l-15)+"%, 1)";
 }
 
 function rgb2hsv(r, g, b) {
@@ -1111,3 +1102,7 @@ const refresher = async () => {
     }
   }
 };
+
+applySettings(settings);
+script.js
+40 KB
